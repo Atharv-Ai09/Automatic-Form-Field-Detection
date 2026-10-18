@@ -1,16 +1,40 @@
-# Automatic Form Field Detection and Classification using Deep Learning
+# FormDetect — Automatic Form Field Detection and Classification using Deep Learning
 
-**Student:** ATHARV SHETTY  **Register No.:** 8080110  (IA-3 mini project)
+**Student:** Atharv Shetty  |  **Register No.:** 8080110
+**Programme:** Diploma in Artificial Intelligence and Machine Learning, GTTC Belagavi (2026)
+**Guide:** K.S Shirur
 
-FormDetect takes a scanned form image, finds text/field regions, classifies each region as
-**question, answer, header or other** with a neural network trained on the **FUNSD** dataset,
-draws coloured bounding boxes with labels, and shows the result in a web page.
+FormDetect takes a scanned form image, finds text/field regions with OpenCV, classifies each region as
+**question, answer, header or other** with a neural network trained on the **FUNSD** dataset, draws
+coloured bounding boxes with labels, and shows the result in a web page together with the model's
+confidence for every region.
 
-> **Honest status:** this repository contains code only. No trained model, no dataset and
-> no evaluation results are included. All accuracy numbers come from running
-> `train.py` and `evaluation.py` yourself on the real FUNSD data.
+The neural network is written **from scratch with NumPy** (forward propagation, backpropagation,
+weighted cross-entropy loss, Adam optimizer). No TensorFlow, no PyTorch, no pre-trained weights and
+no external AI API are used.
 
-## System architecture
+---
+
+## Screenshots
+
+**1. Upload a form, preview it and press *Detect Fields*** — the result image shows coloured boxes
+(question = blue, answer = green, header = red, other = grey).
+
+![Upload page and result image](screenshots/01-upload-and-result.png)
+
+**2. Detected fields** — every region gets a label, the model's confidence and its bounding box
+`[x1, y1, x2, y2]`; the field count is shown next to the heading.
+
+![Detected fields list](screenshots/02-detected-fields.png)
+
+**3. Model information and How it works** — loaded model, architecture and the measured validation and
+test figures read from the backend.
+
+![Model information](screenshots/03-model-information.png)
+
+---
+
+## How it works
 
 ```
 Form Image
@@ -19,140 +43,233 @@ Image Preprocessing        (grayscale, noise reduction)
      |
 Candidate Region Detection (OpenCV: threshold + dilate + contours)
      |
-Feature Extraction         (32x32 normalised crop + 5 position/shape numbers)
+Feature Extraction         (32x32 normalised crop + 5 position/shape numbers = 1029 values)
      |
-Deep Learning Classifier   (NumPy neural network, trained on FUNSD)
+Deep Learning Classifier   (NumPy neural network 1029 -> 128 -> 64 -> 4)
      |
-Question / Answer / Header / Other
+Question / Answer / Header / Other  (+ softmax probability = confidence)
      |
 Bounding Box Generation
      |
-Flask Backend
-     |
-Web Interface
-     |
-Final Result
+Flask Backend  ->  Web Interface  ->  Final Result
 ```
 
-**Two-stage design.** A fully custom object detector is too complex for this scope, so:
-- Stage 1 finds candidate regions with classic OpenCV (no learning).
-- Stage 2 is a neural network (written from scratch with NumPy, no pretrained weights) that classifies each region.
+**Two-stage design**
 
-The network is trained on the **annotated FUNSD boxes**, but at prediction time it receives
-**boxes found by OpenCV**. These differ slightly (e.g. OpenCV may split one FUNSD entity into
-several boxes), so real-world results on uploaded forms can be lower than the test-set score.
+1. **Stage 1 – candidate regions (OpenCV, no learning):** threshold the page, dilate horizontally so the
+   words of a line join together, take the contours as boxes, and remove boxes that are too small or too large.
+2. **Stage 2 – classification (neural network):** each box is cropped, resized to 32×32, normalised and
+   combined with five geometry numbers (left, top, width, height, aspect ratio). The network outputs four
+   probabilities; the largest is the predicted class and is shown as the confidence.
+
+**Network:** `1029 -> 128 (ReLU) -> 64 (ReLU) -> 4 (Softmax)`, He initialisation, class-weighted
+cross-entropy loss, Adam optimizer (learning rate 0.001), mini-batches of 64, best model chosen by the lowest
+validation loss.
+
+---
+
+## Dataset
+
+**FUNSD** (Form Understanding in Noisy Scanned Documents) — 199 scanned forms (149 training, 50 testing)
+with annotated entities: bounding box, label and text. Labels used: `question`, `answer`, `header`, `other`.
+Download: <https://guillaumejaume.github.io/FUNSD/>. The dataset is **not** included in this repository.
+
+The 149 training forms are split **by document** into training (127) and validation (22) with a fixed seed
+(42); the 50 testing forms are the test set.
+
+| Split | Documents | Regions | question | answer | header | other |
+|---|---|---|---|---|---|---|
+| Training | 127 | 6,199 | 2,740 | 2,362 | 365 | 732 |
+| Validation | 22 | 1,212 | 526 | 440 | 76 | 170 |
+| Test | 50 | 2,332 | 1,077 | 821 | 122 | 312 |
+
+(All numbers are printed by `prepare_dataset.py`.)
+
+---
+
+## Results (measured on the FUNSD test split)
+
+Produced by `evaluation.py` from the trained model on 2,332 test regions.
+
+| Metric | Value |
+|---|---|
+| Accuracy | 0.5742 (57.42%) |
+| Macro precision | 0.5129 |
+| Macro recall | 0.5144 |
+| Macro F1-score | 0.4752 |
+| Validation accuracy (best epoch) | 0.6559 |
+
+| Class | Precision | Recall | F1-score | Support |
+|---|---|---|---|---|
+| question | 0.6815 | 0.6955 | 0.6884 | 1077 |
+| answer | 0.8041 | 0.5201 | 0.6317 | 821 |
+| header | 0.1356 | 0.5246 | 0.2155 | 122 |
+| other | 0.4304 | 0.3173 | 0.3653 | 312 |
+
+Confusion matrix (rows = true class, columns = predicted class):
+
+| | question | answer | header | other |
+|---|---|---|---|---|
+| **question** | 749 | 53 | 212 | 63 |
+| **answer** | 218 | 427 | 117 | 59 |
+| **header** | 41 | 8 | 64 | 9 |
+| **other** | 91 | 43 | 79 | 99 |
+
+**Training behaviour:** training loss fell from 1.1469 to 0.0044 over 60 epochs, but validation loss was
+lowest at epoch 5 (1.0630) and then rose to 4.5211, which is clear **overfitting**. The saved model is the
+epoch 5 model. The loss graph is saved by `train.py` as `results/loss_curve.png`.
+
+**Honest reading of the results:** the performance is modest. *Question* is recognised best, *answer* has
+high precision but low recall, and *header* has low precision (many questions, answers and other regions are
+wrongly labelled header). The scores use the annotated FUNSD boxes; boxes found by the OpenCV detector can
+give lower performance on new forms.
+
+---
 
 ## Project structure
 
 ```
-backend/   app.py  config.py  prepare_dataset.py  preprocessing.py  model.py
-           train.py  evaluation.py  predict.py  test_api.py  requirements.txt
-           dataset/{raw,train,validation,test}   model/   results/
-frontend/  package.json  index.html  src/(main.js, style.css)  public/
-README.md  REPORT.md  .gitignore
+Automatic-Form-Field-Detection/
+├── backend/
+│   ├── app.py                Flask API (/health, /model-info, /predict)
+│   ├── config.py             shared settings (classes, sizes, paths, seed)
+│   ├── prepare_dataset.py    reads FUNSD annotations, builds train/validation/test data
+│   ├── preprocessing.py      image preprocessing and feature extraction
+│   ├── model.py              NumPy neural network (forward, backprop, Adam)
+│   ├── train.py              training, best-model saving, loss curve
+│   ├── evaluation.py         accuracy, precision, recall, F1, confusion matrix
+│   ├── predict.py            candidate detection + classification + drawing
+│   ├── test_api.py           automatic API error-handling checks
+│   ├── requirements.txt
+│   ├── dataset/{raw,train,validation,test}/
+│   ├── model/                form_field_model.npz, model_info.json (created by train.py)
+│   └── results/              loss_curve.png, confusion_matrix.png, evaluation_report.txt, metrics.json
+├── frontend/                 Vite + HTML/CSS/JavaScript web interface
+├── screenshots/              images used in this README
+├── README.md
+├── REPORT.md
+└── .gitignore
 ```
+
+---
 
 ## Setup and run
 
-**Step 1 - Download FUNSD.** From the official page <https://guillaumejaume.github.io/FUNSD/>
-download `dataset.zip` (199 scanned forms: 149 training, 50 testing).
+**Requirements:** Python 3.9+ and Node.js (for the frontend). No GPU needed.
 
-**Step 2 - Place it.** Extract it so you have
-`backend/dataset/raw/dataset/training_data/{images,annotations}` and
-`backend/dataset/raw/dataset/testing_data/{images,annotations}`.
+**1. Download FUNSD** and extract it so that these folders exist:
+```
+backend/dataset/raw/dataset/training_data/{images,annotations}
+backend/dataset/raw/dataset/testing_data/{images,annotations}
+```
 
-**Step 3 - Install Python packages** (Python 3.9+):
+**2. Install the Python packages**
 ```
 cd backend
 python -m venv venv
-venv\Scripts\activate          # Windows      (Linux/macOS: source venv/bin/activate)
+venv\Scripts\activate            # Windows   (Linux/macOS: source venv/bin/activate)
 pip install -r requirements.txt
 ```
 
-**Step 4 - Prepare the dataset** (prints the real class counts):
+**3. Prepare the dataset** (prints the real class counts)
 ```
 python prepare_dataset.py
 ```
-**Step 5 - Train** (optional: `--epochs 100 --lr 0.001`):
+
+**4. Train** (optional: `--epochs 100 --lr 0.001`)
 ```
 python train.py
 ```
-**Step 6 - Evaluate** on the test split:
+
+**5. Evaluate** on the test split
 ```
 python evaluation.py
 ```
-**Step 7 - Start Flask** (http://127.0.0.1:5000):
+
+**6. Start the Flask backend** (http://127.0.0.1:5000)
 ```
 python app.py
 ```
-**Step 8 - Start the frontend** (new terminal; needs Node.js):
+
+**7. Start the frontend** (new terminal)
 ```
 cd frontend
 npm install
 npm run dev
 ```
-Open the address Vite prints (normally http://localhost:5173).
-If the backend runs elsewhere, set `VITE_API_URL` (e.g. in `frontend/.env`).
+Open the address Vite prints (normally http://localhost:5173). If the backend runs elsewhere, set
+`VITE_API_URL` (for example in `frontend/.env`).
 
-Command-line prediction: `python predict.py path/to/form.png` (saves an annotated image in `results/`).
+**Command-line prediction:** `python predict.py path\to\form.png` prints the fields and saves an annotated
+image in `results/`.
 
-## Outputs created by you (not shipped)
-- `model/form_field_model.npz`, `model/model_info.json`
-- `results/loss_curve.png`, `results/confusion_matrix.png`, `results/evaluation_report.txt`, `results/metrics.json`
-- `dataset/<split>/data.npz` and `annotations.csv`
+---
 
 ## API
-- `GET /health` -> `{"status": "ok"}`
-- `GET /model-info` -> training/evaluation info if available
-- `POST /predict` (multipart field `image`) ->
-  `{"success": true, "field_count": N, "fields": [{"label", "confidence", "bbox": [x1,y1,x2,y2]}], "image": "data:image/png;base64,..."}`
-  Errors return `{"success": false, "error": "..."}` with status 400, 413, 415 or 503.
-  `confidence` is the softmax probability produced by the model.
 
-## Testing procedures
-Run `python test_api.py` for the automatic checks, or test by hand in the web page:
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | `{"status": "ok"}` |
+| `/model-info` | GET | whether a model exists, plus training and evaluation figures if available |
+| `/predict` | POST | multipart field `image`; returns detected fields and the annotated image |
+
+Example `/predict` response:
+```json
+{
+  "success": true,
+  "field_count": 8,
+  "image_size": [762, 1000],
+  "fields": [
+    { "label": "question", "confidence": 0.62, "bbox": [97, 86, 359, 100] }
+  ],
+  "image": "data:image/png;base64,..."
+}
+```
+`confidence` is the softmax probability produced by the model. Errors return
+`{"success": false, "error": "..."}` with status 400 (invalid image), 413 (file over 10 MB),
+415 (unsupported type; allowed: PNG, JPG, JPEG, BMP) or 503 (model not trained yet).
+
+---
+
+## Testing
+
+Run the automatic API checks with `python test_api.py`, or test by hand in the web page:
 
 | Test | Action | Expected result |
 |---|---|---|
-| 1 | Upload a valid form image (after training) | Result image, field list and count appear |
-| 2 | Upload a `.txt` file, or a corrupted `.png` | Message: unsupported file type / not a valid image |
-| 3 | Upload a `.gif` | Message: unsupported file type (PNG, JPG, JPEG, BMP only) |
-| 4 | Delete `backend/model/` contents, then detect | Message: no trained model found, run `python train.py` |
-| 5 | Upload a very large image (e.g. 4500x3500) | It is shrunk to 2000 px and processed; files over 10 MB give "file is too large" |
+| 1 | Upload a valid form image | Result image, field list and count appear |
+| 2 | Upload a `.txt` file or a corrupted `.png` | Message: unsupported file type / not a valid image |
+| 3 | Upload a `.gif` | Message: unsupported file type |
+| 4 | Remove the contents of `backend/model/`, then detect | Message: no trained model, run `train.py` |
+| 5 | Upload a very large image (e.g. 4500×3500) | Image is shrunk to 2000 px and processed; files over 10 MB are rejected |
 
-## How the Project Works
-1. **Input** - the user uploads a form image in the browser.
-2. **Preprocessing** - converted to grayscale, noise reduced (`preprocessing.py`). The same code is used in training and prediction.
-3. **Candidate field detection** - the page is thresholded (ink = white), dilated so words of one line merge, and contours give bounding boxes (`predict.py`).
-4. **Feature extraction** - each box is cropped, resized to 32x32, pixels scaled to 0-1, plus 5 numbers: left, top, width, height, aspect ratio.
-5. **Deep learning classification** - a neural network (1029 -> 128 -> 64 -> 4) gives four probabilities (`model.py`).
-6. **Prediction** - the class with the highest probability is the label; that probability is the confidence.
-7. **Bounding box drawing** - a coloured rectangle and label are drawn per region (blue question, green answer, red header, grey other).
-8. **Result display** - Flask sends the drawn image and JSON to the web page.
+---
 
-## Viva questions - simple answers
-- **Deep learning:** machine learning with neural networks that have several layers and learn patterns from examples.
-- **Form field detection:** finding where the fields (labels, boxes, headings) are on a form.
-- **Bounding box:** a rectangle `[x1, y1, x2, y2]` around an object.
-- **Classification:** choosing one category for an input (here one of four).
-- **Preprocessing:** cleaning and standardising data before the model sees it.
-- **Training:** the network sees labelled examples and adjusts its weights (backpropagation + Adam) to reduce the loss.
-- **Validation:** data not used for weight updates, used during training to check progress and pick the best model.
-- **Testing:** completely unseen data used once at the end for the final score.
-- **Accuracy:** correct predictions / all predictions.
+## Viva quick answers
+
+- **Deep learning:** machine learning with multi-layer neural networks that learn from examples.
+- **Form field detection:** finding where the labels, answers and headings are on a form.
+- **Bounding box:** a rectangle `[x1, y1, x2, y2]` around a region.
+- **Classification:** choosing one of four classes for each region.
+- **Preprocessing:** cleaning and standardising the image before the model sees it.
+- **Training / validation / testing:** learning from data / checking progress and choosing the best model / final score on unseen data.
+- **Accuracy:** correct predictions ÷ all predictions.
 - **Precision:** of regions predicted as a class, how many really were that class.
 - **Recall:** of regions that really are a class, how many were found.
 - **F1-score:** the balance (harmonic mean) of precision and recall.
 
-## Known limitations
-- FUNSD is small (199 forms), and the "other" and "header" classes have fewer examples than question/answer.
-- OpenCV candidate detection is simple and can merge or split regions; it does not read text (no OCR).
-- The classifier uses image shape and position only, not the meaning of words.
-- Evaluation scores use FUNSD's ground-truth boxes, not OpenCV-detected boxes.
+---
 
-## Verification performed during development
-`python -m py_compile` passed for every Python file. The full pipeline (prepare, train, evaluate,
-predict, Flask API tests) was run only on a small **synthetic** stand-in dataset to check the code
-works; those numbers are meaningless and are not included. It has **not** been run on real FUNSD
-data, and `npm install` / `npm run build` could not be run in the development sandbox (no npm
-registry access), so please run them on your machine.
+## Limitations and future work
+
+- FUNSD is small (199 forms) and the classes are unequal; the model overfits after a few epochs.
+- The OpenCV detector is simple and may merge or split regions; there is no OCR, so the model never reads the words.
+- Training uses annotated boxes but prediction uses detected boxes, so real-world results can be lower than the test score.
+- Ideas: early stopping, weight decay or dropout, data augmentation, OCR words as extra features, a convolutional network, linking each question to its answer.
+
+---
+
+## Credits
+
+- Dataset: G. Jaume, H. K. Ekenel, J.-P. Thiran, *FUNSD: A Dataset for Form Understanding in Noisy Scanned Documents*, ICDAR-OST 2019.
+- Libraries: NumPy, OpenCV, Matplotlib, Flask, Vite.
