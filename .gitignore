@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# FUNSD dataset and prepared data (do not upload the dataset to GitHub)
+backend/dataset/raw/*
+backend/dataset/train/*
+backend/dataset/validation/*
+backend/dataset/test/*
+!backend/dataset/**/.gitkeep
+
+# Trained model and generated results (recreate with train.py / evaluation.py)
+backend/model/*
+backend/results/*
+!backend/model/.gitkeep
+!backend/results/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+.DS_Store

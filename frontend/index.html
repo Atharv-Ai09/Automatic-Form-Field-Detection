@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>FormDetect - Automatic Form Field Detection</title>
+  </head>
+  <body>
+    <header class="top">
+      <h1>FormDetect</h1>
+      <p>Automatic Form Field Detection</p>
+    </header>
+
+    <main class="layout">
+      <section class="panel" id="upload-panel">
+        <h2>Upload form</h2>
+        <label class="picker" for="file-input">
+          <span id="file-name">Select an image (PNG, JPG, JPEG, BMP)</span>
+        </label>
+        <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.bmp,image/png,image/jpeg,image/bmp" hidden />
+        <img id="preview" class="preview" alt="Preview of the selected form" hidden />
+        <button id="detect-btn" type="button" disabled>Detect Fields</button>
+        <p id="message" class="message" role="status"></p>
+      </section>
+
+      <section class="panel" id="result-panel">
+        <h2>Result image</h2>
+        <div class="legend" id="legend"></div>
+        <p id="result-empty" class="empty">Choose a form image and press Detect Fields.</p>
+        <img id="result-image" class="result-image" alt="Form with detected fields" hidden />
+      </section>
+
+      <section class="panel" id="fields-panel">
+        <h2>Detected fields <span id="count" class="count">0</span></h2>
+        <p id="fields-empty" class="empty">No fields yet.</p>
+        <ul id="fields" class="fields"></ul>
+      </section>
+
+      <section class="panel" id="model-panel">
+        <h2>Model information</h2>
+        <dl id="model-info" class="info"><dt>Status</dt><dd>Checking backend...</dd></dl>
+      </section>
+
+      <section class="panel wide" id="how-panel">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><strong>Preprocessing</strong> The page becomes grayscale and noise is reduced.</li>
+          <li><strong>Candidate detection</strong> OpenCV finds text-like regions and gives each a bounding box.</li>
+          <li><strong>Classification</strong> A neural network trained on FUNSD labels each region as question, answer, header or other.</li>
+          <li><strong>Result</strong> Boxes and labels are drawn on the image. Confidence is the network's own probability.</li>
+        </ol>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
